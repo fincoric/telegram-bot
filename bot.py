@@ -3,14 +3,17 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+import os
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-import os
+# Берём токен из переменной окружения
 TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN не задан в переменных окружения!")
 
 SEND_HOUR = 9
 SEND_MINUTE = 0
@@ -39,7 +42,7 @@ def load_chat_id() -> Optional[int]:
     try:
         data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
         value = data.get("chat_id")
-        return int(value) if value is not None else None
+        return int(value) if value else None
     except Exception:
         return None
 
@@ -116,7 +119,7 @@ async def scheduler(bot: Bot):
     while True:
         now = datetime.now()
 
-        if target_chat_id is not None:
+        if target_chat_id:
             if now.hour == SEND_HOUR and now.minute == SEND_MINUTE:
                 if last_sent_date != now.date():
                     try:
@@ -134,6 +137,7 @@ async def main():
 
     bot = Bot(token=TOKEN)
     asyncio.create_task(scheduler(bot))
+    # Запуск polling без портов
     await dp.start_polling(bot)
 
 
