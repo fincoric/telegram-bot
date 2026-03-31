@@ -11,7 +11,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 import os
 TOKEN = os.environ.get("BOT_TOKEN")
-TG_SECRET = os.environ.get("TG_SECRET")
 
 SEND_HOUR = 9
 SEND_MINUTE = 0
