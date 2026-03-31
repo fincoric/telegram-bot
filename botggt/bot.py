@@ -9,7 +9,9 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-TOKEN = "8693230772:AAH04ixsC8G7O4i-gIr9X5GkcYcAX1lInrk"
+import os
+TOKEN = os.environ.get("BOT_TOKEN")
+TG_SECRET = os.environ.get("TG_SECRET")
 
 SEND_HOUR = 9
 SEND_MINUTE = 0
