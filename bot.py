@@ -1,41 +1,18 @@
 import asyncio
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 TOKEN = "8693230772:AAH04ixsC8G7O4i-gIr9X5GkcYcAX1lInrk"
 
-TYUMEN_TZ = timezone(timedelta(hours=7))
-CONFIG_FILE = Path("config.json")
-
-default_config = {
-    "chat_id": None,
-    "auto_poll_enabled": True,
-    "last_sent_date": None
-}
-
-dp = Dispatcher()
-config = default_config.copy()
-
-
-def load_config():
-    global config
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-            config.update(data)
-        except Exception:
-            pass
-
-
-def save_config():
-    CONFIG_FILE.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
-
+SEND_HOUR = 9
+SEND_MINUTE = 0
 
 POLL_QUESTION = "На какой паре ты сегодня будешь?"
 POLL_OPTIONS = [
@@ -49,13 +26,43 @@ POLL_OPTIONS = [
     "Я еще не определился(-ась)"
 ]
 
+CONFIG_FILE = Path("config.json")
+
+dp = Dispatcher()
+target_chat_id: Optional[int] = None
+
+
+def load_chat_id() -> Optional[int]:
+    if not CONFIG_FILE.exists():
+        return None
+    try:
+        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        value = data.get("chat_id")
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def save_chat_id(chat_id: int) -> None:
+    CONFIG_FILE.write_text(
+        json.dumps({"chat_id": chat_id}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def panel_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📩 Отправить опрос сейчас", callback_data="send_poll_now")
+    return kb.as_markup()
+
 
 def main_menu_keyboard():
+    """Квадратик с основными кнопками под полем ввода"""
     kb = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📊 Создать опрос сейчас")],
+            [KeyboardButton(text="📊 Создать опрос")],
             [KeyboardButton(text="💾 Сохранить чат")],
-            [KeyboardButton(text="🕒 Автоопрос")],
+            [KeyboardButton(text="⚙ Панель управления")]
         ],
         resize_keyboard=True
     )
@@ -74,61 +81,81 @@ async def send_poll(bot: Bot, chat_id: int):
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
-    load_config()
-    await message.answer("Бот запущен. Меню ниже 👇", reply_markup=main_menu_keyboard())
+    await message.answer(
+        "Бот запущен.\n"
+        "Используй меню ниже 👇",
+        reply_markup=main_menu_keyboard()
+    )
 
 
 @dp.message()
 async def menu_handler(message: Message):
+    global target_chat_id
+
     text = message.text.strip()
 
-    if text == "💾 Сохранить чат":
+    if text == "📊 Создать опрос":
+        if target_chat_id is None:
+            await message.answer("Сначала нужно сохранить чат через '💾 Сохранить чат'")
+            return
+        await send_poll(message.bot, target_chat_id)
+        await message.answer("Опрос отправлен ✅")
+
+    elif text == "💾 Сохранить чат":
         if message.chat.type == "private":
             await message.answer("Эту команду нужно использовать в группе или канале.")
             return
-        config["chat_id"] = message.chat.id
-        save_config()
-        await message.answer(f"Чат сохранён: {config['chat_id']}")
+        target_chat_id = message.chat.id
+        save_chat_id(target_chat_id)
+        await message.answer(f"Чат сохранён: {target_chat_id}")
 
-    elif text == "📊 Создать опрос сейчас":
-        if not config.get("chat_id"):
-            await message.answer("Сначала нужно сохранить чат через '💾 Сохранить чат'")
-            return
-        await send_poll(message.bot, config["chat_id"])
-        config["last_sent_date"] = datetime.now(TYUMEN_TZ).isoformat()
-        save_config()
-        await message.answer("Опрос отправлен ✅")
+    elif text == "⚙ Панель управления":
+        await message.answer("Панель управления:", reply_markup=panel_keyboard())
 
-    elif text == "🕒 Автоопрос":
-        config["auto_poll_enabled"] = True
-        save_config()
-        await message.answer("Автоматический опрос включён. Он будет отправляться каждые 24 часа.")
+    else:
+        await message.answer("Неизвестная команда. Используй меню ниже 👇", reply_markup=main_menu_keyboard())
 
 
-async def auto_poll_scheduler(bot: Bot):
-    """Отправка опроса каждые 24 часа"""
+@dp.callback_query(F.data == "send_poll_now")
+async def send_poll_now(callback: CallbackQuery, bot: Bot):
+    await callback.answer("Отправляю опрос...")
+
+    if target_chat_id is None:
+        await callback.message.answer("Сначала отправь /setchat в нужной группе или канале.")
+        return
+
+    try:
+        await send_poll(bot, target_chat_id)
+        await callback.message.answer("Опрос отправлен ✅")
+    except Exception as e:
+        await callback.message.answer(f"Не удалось отправить опрос: {e}")
+
+
+async def scheduler(bot: Bot):
+    global target_chat_id
+    last_sent_date = None
+
     while True:
-        if config.get("chat_id") and config.get("auto_poll_enabled"):
-            last_sent = config.get("last_sent_date")
-            now = datetime.now(TYUMEN_TZ)
+        now = datetime.now()
 
-            # если последний опрос был не сегодня, отправляем
-            if not last_sent or (datetime.fromisoformat(last_sent).date() < now.date()):
-                try:
-                    await send_poll(bot, config["chat_id"])
-                    config["last_sent_date"] = now.isoformat()
-                    save_config()
-                    print(f"Автоопрос отправлен {now}")
-                except Exception as e:
-                    print(f"Ошибка при отправке автоопроса: {e}")
+        if target_chat_id is not None:
+            if now.hour == SEND_HOUR and now.minute == SEND_MINUTE:
+                if last_sent_date != now.date():
+                    try:
+                        await send_poll(bot, target_chat_id)
+                        last_sent_date = now.date()
+                    except Exception:
+                        pass
 
-        await asyncio.sleep(60)  # проверка каждую минуту
+        await asyncio.sleep(20)
 
 
 async def main():
-    load_config()
+    global target_chat_id
+    target_chat_id = load_chat_id()
+
     bot = Bot(token=TOKEN)
-    asyncio.create_task(auto_poll_scheduler(bot))
+    asyncio.create_task(scheduler(bot))
     await dp.start_polling(bot)
 
 
