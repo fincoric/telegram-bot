@@ -10,7 +10,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-TOKEN = "8693230772:AAH04ixsC8G7O4i-gIr9X5GkcYcAX1lInrk"
+TOKEN = os.getenv("BOT_TOKEN")
 
 TYUMEN_TZ = timezone(timedelta(hours=7))
 CONFIG_FILE = Path("config.json")
