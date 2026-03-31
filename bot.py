@@ -6,10 +6,12 @@ from typing import Optional
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-TOKEN = "8693230772:AAH04ixsC8G7O4i-gIr9X5GkcYcAX1lInrk"
+import os
+TOKEN = os.environ.get("BOT_TOKEN")
+TG_SECRET = os.environ.get("TG_SECRET")
 
 SEND_HOUR = 9
 SEND_MINUTE = 0
@@ -56,19 +58,6 @@ def panel_keyboard():
     return kb.as_markup()
 
 
-def main_menu_keyboard():
-    """Квадратик с основными кнопками под полем ввода"""
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📊 Создать опрос")],
-            [KeyboardButton(text="💾 Сохранить чат")],
-            [KeyboardButton(text="⚙ Панель управления")]
-        ],
-        resize_keyboard=True
-    )
-    return kb
-
-
 async def send_poll(bot: Bot, chat_id: int):
     await bot.send_poll(
         chat_id=chat_id,
@@ -83,37 +72,27 @@ async def send_poll(bot: Bot, chat_id: int):
 async def start_handler(message: Message):
     await message.answer(
         "Бот запущен.\n"
-        "Используй меню ниже 👇",
-        reply_markup=main_menu_keyboard()
+        "Напиши /setchat в нужной группе или канале, чтобы сохранить чат.\n"
+        "Напиши /panel, чтобы открыть кнопку ручной отправки."
     )
 
 
-@dp.message()
-async def menu_handler(message: Message):
+@dp.message(Command("setchat"))
+async def setchat_handler(message: Message):
     global target_chat_id
 
-    text = message.text.strip()
+    if message.chat.type == "private":
+        await message.answer("Открой /setchat в нужной группе или канале, а не в личке.")
+        return
 
-    if text == "📊 Создать опрос":
-        if target_chat_id is None:
-            await message.answer("Сначала нужно сохранить чат через '💾 Сохранить чат'")
-            return
-        await send_poll(message.bot, target_chat_id)
-        await message.answer("Опрос отправлен ✅")
+    target_chat_id = message.chat.id
+    save_chat_id(target_chat_id)
+    await message.answer(f"Чат сохранён: {target_chat_id}")
 
-    elif text == "💾 Сохранить чат":
-        if message.chat.type == "private":
-            await message.answer("Эту команду нужно использовать в группе или канале.")
-            return
-        target_chat_id = message.chat.id
-        save_chat_id(target_chat_id)
-        await message.answer(f"Чат сохранён: {target_chat_id}")
 
-    elif text == "⚙ Панель управления":
-        await message.answer("Панель управления:", reply_markup=panel_keyboard())
-
-    else:
-        await message.answer("Неизвестная команда. Используй меню ниже 👇", reply_markup=main_menu_keyboard())
+@dp.message(Command("panel"))
+async def panel_handler(message: Message):
+    await message.answer("Панель управления:", reply_markup=panel_keyboard())
 
 
 @dp.callback_query(F.data == "send_poll_now")
